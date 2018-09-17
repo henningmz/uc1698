@@ -29,13 +29,6 @@ class uc1698 {
 
 
     private:
-        // 33: DB0, ... 40: DB7
-
-        // 47: Reset pin (0 = Reset)
-        // 48: Write Clock [WR] (0 = Write Data, 1 = Wait for next write)
-        // 49: Read Clock [RD] (0 = Read Data, 1 = Wait for next read)
-        // 50: Control Data pin (0 = Control Data, 1 = Display Data)
-        // 51: Chip Select
 
         int _displayRows = 160;
 

@@ -7,6 +7,21 @@
 
     https://www.buydisplay.com/default/3-inch-graphic-160x160-lcd-display-controller-uc1698-module-black-on-white
     https://www.buydisplay.com/default/3-inch-led-backlight-display-160x160-lcm-module-graphic-white-on-blue
+
+    The driver assumes display/controller are connected to the Arduino Due via these pins and in accordance with
+    the "Interfacing Document" found at https://www.buydisplay.com/download/interfacing/ERC160160-2_Interfacing.pdf
+
+        33: DB0
+        34: DB1 
+            ...
+        40: DB7
+
+        47: Reset pin (0 = Reset)
+        48: Write Clock [WR] (0 = Write Data, 1 = Wait for next write)
+        49: Read Clock [RD] (0 = Read Data, 1 = Wait for next read)
+        50: Control Data pin (0 = Control Data, 1 = Display Data)
+        51: Chip Select
+
  */
 
 #include <Arduino.h>
@@ -17,8 +32,37 @@
 uc1698::uc1698() { }
 
 
-// Selects the chip
-// Pin is active low, so 0 = Chip selected
+// Sets the Pins connected to the display bus (33 - 40) up to output mode
+// in order to write data to the display
+
+void uc1698::pinsToOutput() {
+    REG_PIOC_OER = 0b11111111 << 1;
+}
+
+
+// Sets the Pins connected to the display bus (33 - 40) up to input mode
+// in order to read data from the display
+
+void uc1698::pinsToInput() {
+    REG_PIOC_ODR = 0b11111111 << 1;
+}
+
+
+// Shorthand for an idle cycle for the Arduino
+//
+
+void uc1698::nop(uint times) {
+    uint i;
+    for(i=0; i<times; i++) {      
+        __asm__("nop\n\t"); 
+    }
+}
+
+
+
+// Toggles whether the the chip is selected (i.e. takes data)
+// the Pin is active low, so 0 = Chip selected
+
 void uc1698::setCS(bool chipSelect) {   
     //digitalWrite(_CSPin, chipSelect); 
     if (chipSelect) {
@@ -28,8 +72,49 @@ void uc1698::setCS(bool chipSelect) {
     }
 }
 
-// Sets the reset pin
-// Pin is active low, so 0 = Reset
+
+// Toggles whether the next instruction to the controller is a command 
+// (i.e. setting a row address) or display data
+// Pin is active low, so 0 = Command, 1 = Data
+
+void uc1698::setCD(bool command) { 
+    //digitalWrite(_CDPin, commandData); 
+    if (command) {
+        REG_PIOC_SODR = 1 << 13;
+    } else {
+        REG_PIOC_CODR = 1 << 13;
+    }
+}
+
+
+// Toggles the read clock pin (RD) 
+// Pin is active low, so 0 = Read, 1 = Wait for Read
+
+void uc1698::setRD(bool read) {
+    //digitalWrite(_RDPin, read);
+    if (read) {
+        REG_PIOC_SODR = 1 << 14;
+    } else {
+        REG_PIOC_CODR = 1 << 14;
+    }
+}
+
+// Toggles the write clock pin (WR) 
+// Pin is active low, so 0 = Write, 1 = Wait for Write
+
+void uc1698::setWR(bool write) {
+    //digitalWrite(_WRPin, writeRead);
+    if (write) {
+        REG_PIOC_SODR = 1 << 15;
+    } else {
+        REG_PIOC_CODR = 1 << 15;
+    }
+}
+
+
+// Toggles the reset pin
+// Pin is active low, so 0 = Reset, 1 = Run as ususal
+
 void uc1698::setRST(bool RSTstate) {
     //digitalWrite(_RSTPin, RSTstate);
     if (RSTstate) {
@@ -40,64 +125,9 @@ void uc1698::setRST(bool RSTstate) {
 
 }
 
-// Resets the controller
-void uc1698::reset() {
-    this->setRST(1);
-    delay(10);
-    this->setRST(0);
-    delay(150);
-}
 
-// Sets the controller up to command / data mode
-// Pin is active low, so 0 = Command, 1 = Data
-void uc1698::setCD(bool command) { 
-    //digitalWrite(_CDPin, commandData); 
-    if (command) {
-        REG_PIOC_SODR = 1 << 13;
-    } else {
-        REG_PIOC_CODR = 1 << 13;
-    }
-}
-
-// Sets the controller up to write mode
-// Pin is active low, so 0 = Write, 1 = No Write
-void uc1698::setWR(bool write) {
-    //digitalWrite(_WRPin, writeRead);
-    if (write) {
-        REG_PIOC_SODR = 1 << 15;
-    } else {
-        REG_PIOC_CODR = 1 << 15;
-    }
-}
-
-// Sets the controller up to read mode
-// Pin is active low, so 0 = Read, 1 = No Read
-void uc1698::setRD(bool read) {
-    //digitalWrite(_RDPin, read);
-    if (read) {
-        REG_PIOC_SODR = 1 << 14;
-    } else {
-        REG_PIOC_CODR = 1 << 14;
-    }
-}
-
-
-
-void uc1698::pinsToOutput() {
-    REG_PIOC_OER = 0b11111111 << 1;
-}
-
-void uc1698::pinsToInput() {
-    REG_PIOC_ODR = 0b11111111 << 1;
-}
-
-void uc1698::nop(uint times) {
-    uint i;
-    for(i=0; i<times; i++) {      
-        __asm__("nop\n\t"); 
-    }
-}
-
+// Reads data from the 32-bit wide Arduino port) 
+// and returns 8 bits of data (uc1698 controller's bus width)
 
 uint8_t uc1698::read() {
     this->pinsToInput();
