@@ -28,7 +28,6 @@
 #include <uc1698.h>
 
 
-
 uc1698::uc1698() { }
 
 
@@ -45,6 +44,8 @@ void uc1698::pinsToOutput() {
 
 void uc1698::pinsToInput() {
     REG_PIOC_ODR = 0b11111111 << 1;
+    if ((PMC->PMC_PCSR0 & (0x01u << ID_PIOC)) != (0x01u << ID_PIOC)) PMC->PMC_PCER0 = PMC->PMC_PCSR0 | 0x01u << ID_PIOC;   // Enable PIO C clock
+    // https://forums.adafruit.com/viewtopic.php?f=25&t=109859
 }
 
 
@@ -126,22 +127,6 @@ void uc1698::setRST(bool RSTstate) {
 }
 
 
-// Reads data from the 32-bit wide Arduino port) 
-// and returns 8 bits of data (uc1698 controller's bus width)
-
-uint8_t uc1698::read() {
-    this->pinsToInput();
-    
-    this->setRD(0);
-    this->nop(5);       // Delay 5 cycles
-    this->setRD(1);
-
-    uint32_t dataFromPort = REG_PIOC_PDSR;
-    uint8_t data = dataFromPort >> 1;
-    
-    return data;
-}
-
 
 // Basic Data and Commands Writes
 // nmmbered [x] and sorted according to the datasheet at
@@ -160,10 +145,23 @@ void uc1698::write(uint8_t data) {
 }
 
 // [1] Send Data To Display
-void uc1698::writeData(uint8_t data) {
+/*void uc1698::writeData(uint8_t data) {
     this->setCS(0);     // Chip select (0 = Select)
     this->setCD(1);     // Set Data (0 = Command, 1 = Data)
     this->write(data);
+    this->setCS(1);
+}*/
+
+void uc1698::writeData(uint16_t data) {
+    this->setCS(0);     // Chip select (0 = Select)
+    this->setCD(1);     // Set Data (0 = Command, 1 = Data)
+
+    uint8_t part1 = (uint8_t)(data >> 8);
+    uint8_t part2 = (uint8_t)data;
+
+    this->write(part1);
+    this->write(part2);
+
     this->setCS(1);
 }
 
@@ -173,8 +171,45 @@ void uc1698::writeCommand(uint8_t data) {
     this->setCD(0);     // Set Command (0 = Command, 1 = Data)
     this->write(data);
     this->setCS(1);
-    delay(1);
+    //delay(1);
 }
+
+// [2*] Reads data from the 32-bit wide Arduino port) 
+// and returns 8 bits of data (uc1698 controller's bus width)
+uint8_t uc1698::read() {
+    this->pinsToInput();
+
+    this->setRD(0);
+    this->nop(3);       // Delay 5 cycles
+	this->setRD(1);
+
+    uint32_t dataFromPort = REG_PIOC_PDSR;
+    uint8_t data = dataFromPort >> 1;
+
+    return data;
+}
+
+// [2] Read Data From Display Memory
+uint16_t uc1698::readData() {
+    this->setCS(0);
+    this->setCD(1);     // Set Data (0 = Command, 1 = Data)
+
+    this->read();                   // First read, returns dummy value, we don't use that
+    uint8_t part1 = this->read();   // Second Read, returns 1,5 pixels (8 bit data of 16 bit data)
+    uint8_t part2 = this->read();   // Third Read, returns second 1,5 pixels (8bit)
+    
+    uint16_t data = ((uint16_t)part1 << 8) | part2;
+
+    this->setCS(1);
+    return data;
+}
+
+
+
+
+
+
+
 
 
 // [4] Set Column Address
@@ -313,7 +348,9 @@ void uc1698::setDisplayEnable(bool sleepMode) {
 
 
 // [18] Set LCD Mapping Control
-//void uc1698::setLCDMappingControl() {}
+void uc1698::setLCDMappingControl(bool mirrorX, bool mirrorY) {
+    this->writeCommand(0b11000000 + 0b100 * mirrorX + 0b10 * mirrorY);
+}
 
 
 // [19] Set N-Line Inversion
@@ -416,12 +453,9 @@ void uc1698::initConnection() {
 
 
 void uc1698::initDisplay() {
-
     this->setRST(0);
     this->setCS(0);
     delay(150);
-
-
 
     this->setRST(1);
     delay(100);
@@ -438,11 +472,14 @@ void uc1698::initDisplay() {
 
     this->writeCommand(0x24 | 1);           //0x24 = temperature control (-0.05%/C)
 
+
+    this->setLCDMappingControl(1, 0);
+/*
     this->writeCommand(0xc0 | 2);           //0x20 = LCD Mappiing Control (SEG1-->SEG384; COM160-->COM1)
 
     this->writeCommand(0x88 | 3);           //0x88 = RAM Address Control (up to down, automatically +1)
-
-    this->writeCommand(0xD8 | 5);           //COM Scan Function (LRC: AEBCD--AEBCD;  Disable FRC;   Enable SEG PWM)
+*/
+   /* this->writeCommand(0xD8 | 5);           //COM Scan Function (LRC: AEBCD--AEBCD;  Disable FRC;   Enable SEG PWM)
 
     this->writeCommand(0xA0 | 1);           //Line Rate (Frame frequency 30.5 KIPS)
 
@@ -456,7 +493,7 @@ void uc1698::initDisplay() {
     this->writeCommand(0x00);               //(Disable NIV)
 
     this->writeCommand(0x84);               //Set Partial Display Control (Disable Partical function)
-
+*/
     this->setVBiasPotentiometer(127);
 
     this->setInverseDisplayEnable(false);
@@ -465,24 +502,79 @@ void uc1698::initDisplay() {
     this->setColorMode();                       // Set Color Mode to 64k
     
     this->setDisplayEnable(true);               // Sets Green Enhance Mode to Disabled, Gray Shade to On/Off and Sleep Mode to !true
-
-
-
-
-
 }
+
+
+uint8_t uc1698::xToColumn(int x)
+{
+    return (x + 2) / 3 + 37;
+}
+
+uint8_t uc1698::xToColumnPosition(int x)
+{
+    return (x + 2) % 3;
+}
+
+
 
 
 
 void uc1698::drawPixelTriplet(bool pixel1State, bool pixel2State, bool pixel3State)
 {
-    this->writeData(0b00000000 + 0b11111000 * pixel1State + 0b111 * pixel2State);
-    this->writeData(0b00000000 + 0b11100000 * pixel2State + 0b11111 * pixel3State);
+    this->writeData(
+          0b0000000000000000 
+        + 0b1111100000000000 * pixel1State 
+        + 0b0000011111100000 * pixel2State 
+        + 0b0000000000011111 * pixel3State
+    );
 }
 
 
+void uc1698::drawPixel(int x, int y)
+{
+    // Convert X-Y values to rows, columns and position in column (0,1,2)
+    int row = y;
+    int col = this->xToColumn(x);
+    int colPos = this->xToColumnPosition(x);
 
+    // Point controller to that address
+    this->setColumnAddress(col);
+    this->setRowAddress(row);
 
+    // Read current pixel state from there
+    uint16_t current3PixelState =  this->readData();
+    uint16_t newPixel = 0;
+    uint16_t new3PixelState = current3PixelState;
+
+    // Determine which pixel should be drawn
+    switch(colPos) {
+        case 0:
+            newPixel = 0b1111100000000000;
+            break;
+        case 1:
+            newPixel = 0b0000011111100000;
+            break;
+        case 2:
+            newPixel = 0b0000000000011111;
+            break;
+    }
+
+    // Add new pixel to old (3-) pixel state
+    new3PixelState = current3PixelState | newPixel;
+
+    // Point controller (again) to current address
+    this->setColumnAddress(col);
+    this->setRowAddress(row);
+
+    // Write new (3-) pixel state
+    this->writeData(new3PixelState);
+}
+
+/*
+void uc1698::undrawPixel(int x, int y)
+{
+
+}*/
 
 
 void uc1698::displayWhite() {
@@ -490,7 +582,7 @@ void uc1698::displayWhite() {
 
   for(i=0;i<160;i++)
      {    
-        this->setRowAddress(i);
+        //this->setRowAddress(i);
         for(j=0;j<54;j++)
         { 
             
@@ -505,34 +597,86 @@ void uc1698::displayWhite() {
 
 void uc1698::displayBlack() {
   uint i,j;
-  for(i=0;i<160;i++)
-     {    
-        this->setRowAddress(i);
-        for(j=0;j<54;j++)
-        { 
-            this->drawPixelTriplet(0, 0, 0); 
-            //this->writeData(0x00);
-            //this->writeData(0x00);
-        }
-     }
-}
-
-void uc1698::displayTestPattern() {
-  uint i,j;
-  for(i=0;i<100;i++)
-    {     
-        this->setRowAddress(i);
-        this->setColumnAddress(j);
-        this->drawPixelTriplet(1, 1, 1);
-        delay(50);
+	for (int i = 0; i <= 159; i++)
+	{    
+    	for(j = 37; j <= 90; j++)
+    	{ 
+    		this->setRowAddress(i);
+    		this->setColumnAddress(j);
+        	this->drawPixelTriplet(0, 0, 0); 
+    	}
     }
 }
 
+/*void uc1698::displayTestPattern() {
+  uint i,j;
+  //for(i=0;i<100;i++)
+   // {     
+        this->setRowAddress(159);
+        this->setColumnAddress(88);
+        this->drawPixelTriplet(1, 1, 1);
 
+        this->setRowAddress(159);
+        this->setColumnAddress(90);
+        this->drawPixelTriplet(1, 1, 1);
+        delay(50);
+   // }
+}*/
+
+void uc1698::displayTestPattern() {
+	uint i,j;
+	for (int i = 0; i <= 159; i++)
+	{
+		for (int j = 37; j <= 90; j++)
+		{
+			this->setRowAddress(i);
+			this->setColumnAddress(j);
+			this->drawPixelTriplet(rand() % 2, rand() % 2, rand() % 2);
+		}
+	}
+}
 
 
 
 
 void uc1698::test() {
-    this->displayTestPattern();
+	this->displayBlack();
+
+    delay(500);
+
+    this->drawPixel(22, 20);
+    this->drawPixel(23, 20);
+    this->drawPixel(24, 20);
+    this->drawPixel(25, 20);
+
+    this->drawPixel(21, 21);
+    this->drawPixel(26, 21);
+
+    this->drawPixel(20, 22);
+    this->drawPixel(23, 22);
+    this->drawPixel(24, 22);
+    this->drawPixel(27, 22);
+
+    this->drawPixel(20, 23);
+    this->drawPixel(22, 23);
+    this->drawPixel(25, 23);
+    this->drawPixel(27, 23);
+    	
+    this->drawPixel(20, 24);
+    this->drawPixel(27, 24);
+
+    this->drawPixel(20, 25);
+    this->drawPixel(22, 25);
+    this->drawPixel(25, 25);
+    this->drawPixel(27, 25);
+
+    this->drawPixel(21, 26);
+    this->drawPixel(26, 26);
+
+    this->drawPixel(22, 27);
+    this->drawPixel(23, 27);
+    this->drawPixel(24, 27);
+    this->drawPixel(25, 27);
+
+    delay(5000);
 }

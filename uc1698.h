@@ -47,17 +47,25 @@ class uc1698 {
         void pinsToOutput();
         void pinsToInput();
 
-        uint8_t read();                                                         // READ
 
         void write(uint8_t data);                                               // [1]
         void writeCommand(uint8_t data);
-        void writeData(uint8_t data);
+        //void writeData(uint8_t data);
+        void writeData(uint16_t data);
+
+        uint8_t read();                                                         // [2*]
+        uint16_t readData();                                                     // [2]
+        //uint8_t readStatus();                                                   // [3]
+
+
 
         void setColumnAddress(int column);                                      // [4]
         void setTemperatureCompensation(int temperatureCompensation);           // [5]
         void setPowerControl();                                                 // [6]
 
         void setRAMAddressControl();                                            // [12]
+
+        void setLCDMappingControl(bool mirrorX, bool mirrorY);                  // [18]
 
         void setRowAddress(int row);
         void setScrollLine(int line);
@@ -71,7 +79,10 @@ class uc1698 {
 
         void setCOMEnd();                                                       // [27]
 
+        uint8_t xToColumn(int x);
+        uint8_t xToColumnPosition(int x);
 
+        void drawPixel(int x, int y);
 
         void drawPixelTriplet(bool pixel1State, bool pixel2State, bool pixel3State);
 
