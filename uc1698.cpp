@@ -22,6 +22,8 @@
         50: Control Data pin (0 = Control Data, 1 = Display Data)
         51: Chip Select
 
+	Test
+
  */
 
 #include <Arduino.h>
