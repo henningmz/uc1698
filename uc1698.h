@@ -4,22 +4,29 @@
     and released into the public domain
  */
 
+
+
+
 #ifndef uc1698_h
 #define uc1698_h
 
 #include "Arduino.h"
 
+#include "Adafruit_GFX.h"
 
-class uc1698 {
+//class uc1698 {
+class uc1698 : public Adafruit_GFX {
+
+
+
     public:
-        uc1698();
+        uc1698(uint8_t width, uint8_t height) : Adafruit_GFX(width, height) { }
 
         void initConnection();
         void initDisplay();
 
         void nop(uint times);
 
-        void test();
         void reset();
 
         void setVBiasPotentiometer(uint8_t vBiasPotentiometer);
@@ -28,9 +35,21 @@ class uc1698 {
         void setDisplayEnable (bool sleepMode);
 
 
-    private:
+        // Adafruit GFX overrides
 
-        int _displayRows = 160;
+        void drawPixel(int16_t x, int16_t y, uint16_t color);
+        void fillScreen(bool color);
+        
+        // public for Test
+        void setColumnAddress(int column);                                      // [4]
+        void setRowAddress(int row);
+        void writeData(uint16_t data);
+
+    private:
+        bool _isYMirrored = 0;
+
+
+        //int _displayRows = 160;
 
 
         int _temperatureCompensation = 0;   // 0: 0.00%/°C, 5: 0.05%/°C, 10: 0.10%/°C, 15: 0.15%/°C, 
@@ -48,10 +67,10 @@ class uc1698 {
         void pinsToInput();
 
 
-        void write(uint8_t data);                                               // [1]
+        void writeSeq(uint8_t data);                                               // [1]
         void writeCommand(uint8_t data);
         //void writeData(uint8_t data);
-        void writeData(uint16_t data);
+
 
         uint8_t read();                                                         // [2*]
         uint16_t readData();                                                     // [2]
@@ -59,7 +78,7 @@ class uc1698 {
 
 
 
-        void setColumnAddress(int column);                                      // [4]
+
         void setTemperatureCompensation(int temperatureCompensation);           // [5]
         void setPowerControl();                                                 // [6]
 
@@ -67,7 +86,6 @@ class uc1698 {
 
         void setLCDMappingControl(bool mirrorX, bool mirrorY);                  // [18]
 
-        void setRowAddress(int row);
         void setScrollLine(int line);
 
         void setColorPattern();                                                 // [20]
@@ -77,19 +95,14 @@ class uc1698 {
         void systemReset();                                                     // [23]
         void NOP();                                                             // [24]
 
-        void setCOMEnd();                                                       // [27]
 
         uint8_t xToColumn(int x);
         uint8_t xToColumnPosition(int x);
 
-        void drawPixel(int x, int y);
+
 
         void drawPixelTriplet(bool pixel1State, bool pixel2State, bool pixel3State);
-
-        void displayTestPattern();
-
-        void displayWhite();
-        void displayBlack();
+  
 
         void displayAddress();
 };
