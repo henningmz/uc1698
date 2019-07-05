@@ -434,6 +434,11 @@ void uc1698::NOP() {
 }*/
 
 
+void uc1698::init() {
+    this->initConnection();
+    this->initDisplay();
+}
+
 void uc1698::initConnection() {
     REG_PIOC_OER = 0b11111 << 12;
 
@@ -495,6 +500,10 @@ void uc1698::initDisplay() {
     this->setColorMode();                       // Set Color Mode to 64k
     
     this->setDisplayEnable(true);               // Sets Green Enhance Mode to Disabled, Gray Shade to On/Off and Sleep Mode to !true
+
+    delay(500);
+    this->fillScreen(0);
+
 }
 
 

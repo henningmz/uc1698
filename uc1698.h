@@ -22,6 +22,7 @@ class uc1698 : public Adafruit_GFX {
     public:
         uc1698(uint8_t width, uint8_t height) : Adafruit_GFX(width, height) { }
 
+        void init();
         void initConnection();
         void initDisplay();
 
