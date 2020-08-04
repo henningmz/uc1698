@@ -1,7 +1,12 @@
  /*
     uc1698.cpp - Library for uc1698 on Arduino Due
-    created by Henning Munzel
+    created by henningmz
     and released into the public domain
+
+
+    Now this is 
+    it's an RGB controller. But instead of writing one pixel with it's rgv-values with every two 8 bit writes
+    it's writing 3 pixels (5 bit, 6 bit, 5 bit) in monochrome mode
 
     tested with Arduino Due and an ERC160160FS-2 and ERC160160SBS-2 from buydisplay.com
 
@@ -22,47 +27,39 @@
         50: Control Data pin (0 = Control Data, 1 = Display Data)
         51: Chip Select
 
-	Test
-
+	Note: All of these pins correspond to the due's PIO Port C.
+          that can bei set (REG_PIOC_SODR) and cleared (REG_PIOC_CODR)
  */
 
-#include <Arduino.h>
-//#include <uc1698.h>
 
+#include <Arduino.h>
 
 // Sets the Pins connected to the display bus (33 - 40) up to output mode
 // in order to write data to the display
-
 void uc1698::pinsToOutput() {
     REG_PIOC_OER = 0b11111111 << 1;
 }
 
-
 // Sets the Pins connected to the display bus (33 - 40) up to input mode
-// in order to read data from the display
-
+// in order to read data from the controller
 void uc1698::pinsToInput() {
     REG_PIOC_ODR = 0b11111111 << 1;
-    if ((PMC->PMC_PCSR0 & (0x01u << ID_PIOC)) != (0x01u << ID_PIOC)) PMC->PMC_PCER0 = PMC->PMC_PCSR0 | 0x01u << ID_PIOC;   // Enable PIO C clock
-    // https://forums.adafruit.com/viewtopic.php?f=25&t=109859
+    
+    // Enable PIO C clock, see https://forums.adafruit.com/viewtopic.php?f=25&t=109859
+    if ((PMC->PMC_PCSR0 & (0x01u << ID_PIOC)) != (0x01u << ID_PIOC)) {
+        PMC->PMC_PCER0 = PMC->PMC_PCSR0 | 0x01u << ID_PIOC;
+    }
 }
 
-
 // Shorthand for an idle cycle for the Arduino
-//
-
 void uc1698::nop(uint times) {
-    uint i;
-    for(i=0; i<times; i++) {      
+    for(int i = 0; i < times; i++) {      
         __asm__("nop\n\t"); 
     }
 }
 
-
-
 // Toggles whether the the chip is selected (i.e. takes data)
 // the Pin is active low, so 0 = Chip selected
-
 void uc1698::setCS(bool chipSelect) {   
     //digitalWrite(_CSPin, chipSelect); 
     if (chipSelect) {
@@ -76,7 +73,6 @@ void uc1698::setCS(bool chipSelect) {
 // Toggles whether the next instruction to the controller is a command 
 // (i.e. setting a row address) or display data
 // Pin is active low, so 0 = Command, 1 = Data
-
 void uc1698::setCD(bool command) { 
     //digitalWrite(_CDPin, commandData); 
     if (command) {
@@ -87,9 +83,9 @@ void uc1698::setCD(bool command) {
 }
 
 
+
 // Toggles the read clock pin (RD) 
 // Pin is active low, so 0 = Read, 1 = Wait for Read
-
 void uc1698::setRD(bool read) {
     //digitalWrite(_RDPin, read);
     if (read) {
@@ -99,9 +95,9 @@ void uc1698::setRD(bool read) {
     }
 }
 
+
 // Toggles the write clock pin (WR) 
 // Pin is active low, so 0 = Write, 1 = Wait for Write
-
 void uc1698::setWR(bool write) {
     //digitalWrite(_WRPin, writeRead);
     if (write) {
@@ -111,10 +107,8 @@ void uc1698::setWR(bool write) {
     }
 }
 
-
 // Toggles the reset pin
 // Pin is active low, so 0 = Reset, 1 = Run as ususal
-
 void uc1698::setRST(bool RSTstate) {
     //digitalWrite(_RSTPin, RSTstate);
     if (RSTstate) {
@@ -122,7 +116,6 @@ void uc1698::setRST(bool RSTstate) {
     } else {
         REG_PIOC_CODR = 1 << 16;
     }
-
 }
 
 
@@ -182,8 +175,8 @@ uint8_t uc1698::read() {
     this->nop(3);       // Delay 5 cycles
 	this->setRD(1);
 
-    uint32_t dataFromPort = REG_PIOC_PDSR;
-    uint8_t data = dataFromPort >> 1;
+    uint32_t dataFromPort = REG_PIOC_PDSR;  // Reads the data from the 32 bit PIO Port C
+    uint8_t data = dataFromPort >> 1;       // Takes only the C1-C8 
 
     return data;
 }
@@ -262,9 +255,8 @@ void uc1698::setPowerControl() {
     this->writeCommand(0b00101011);
 }
 
-
 // [7] Set Advanced Program Control
-// not implemented yet
+// not implemented
 
 
 // [8] Set Scroll Line
@@ -285,7 +277,6 @@ void uc1698::setScrollLine(int line) {
     this->writeSeq(0b01010000 + msb);
 }
 
-
 // [9] Set Row Address
 void uc1698::setRowAddress(int row) {
     uint8_t lsb, msb = 0;
@@ -304,27 +295,22 @@ void uc1698::setRowAddress(int row) {
     this->writeCommand(0b01110000 + msb);
 }
 
-
 // [10] Set VBias Potentiometer
 void uc1698::setVBiasPotentiometer(uint8_t vBiasPotentiometer) {
     this->writeCommand(0b10000001);
     this->writeCommand(vBiasPotentiometer);
 }
 
-
 // [11] Set Partial Display Control
 // not implemented
-
 
 // [12] Set RAM Address Control
 void uc1698::setRAMAddressControl() {
     this->writeCommand(0b10001000);
 }
 
-
 // [13] Set Fixed Lines
 // not implemented
-
 
 // [14] Set Line Rate
 // not implemented
@@ -345,17 +331,14 @@ void uc1698::setDisplayEnable(bool sleepMode) {
     this->writeCommand(0b10101100 + sleepMode);
 }
 
-
 // [18] Set LCD Mapping Control
 void uc1698::setLCDMappingControl(bool mirrorX, bool mirrorY) {
     _isYMirrored = mirrorY;
     this->writeCommand(0b11000000 + 0b100 * mirrorX + 0b10 * mirrorY);
 }
 
-
 // [19] Set N-Line Inversion
 // not implemented
-
 
 // [20] Set Color Pattern
 void uc1698::setColorPattern() {
@@ -364,7 +347,7 @@ void uc1698::setColorPattern() {
 
 // [21] Set Color Mode
 void uc1698::setColorMode() {
-        this->writeCommand(0b11010100);     // sets Color Mode to 64k
+    this->writeCommand(0b11010100);     // sets Color Mode to 64k
 }
 
 // [22] Set COM Scan Function
@@ -377,33 +360,26 @@ void uc1698::systemReset() {
     delay(1);
 }
 
-
 // [24] NOP
 void uc1698::NOP() {
     this->writeCommand(0b11100010);
 }
 
-
 // [25] Set Test Control
 // not implemented, and should not be used
 // (for production testing only)
 
-
 // [26] Set LCD Bias Ratio
 // not implemented
-
 
 // [27] Set COM End
 // not implemented
 
-
 // [28] Set Partial Display Start
 // not implemented
 
-
 // [29] Set Partial Display End
 // not implemented
-
 
 // [30-40] Window Program and MTP
 // not implemented
@@ -412,33 +388,19 @@ void uc1698::NOP() {
 
 
 
-/*
-//  Some functions for convenience
-*/
 
 
-// runs the PowerUp procedure
-/*void uc1698::powerUp() {
-    this->reset();
-    //this->setTempCompensation();
-    //this->setLCDMappingControl
-    //this->setLineRate
-    this->setColorMode();
-    //this->setLCDBiasRatio
-    this->setColorMode();
-    
-    // write display ram
-    //this->writeData();
-
-    this->setDisplayEnable(1, 1, 0);
-}*/
-
-
+/**
+ * [uc1698::init description]
+ */
 void uc1698::init() {
     this->initConnection();
     this->initDisplay();
 }
 
+/**
+ * [uc1698::initConnection description]
+ */
 void uc1698::initConnection() {
     REG_PIOC_OER = 0b11111 << 12;
 
@@ -455,15 +417,15 @@ void uc1698::initConnection() {
 void uc1698::initDisplay() {
     this->setRST(0);
     this->setCS(0);
-    delay(150);
+    delay(500);
 
     this->setRST(1);
-    delay(100);
+    delay(500);
 
     this->systemReset();
 
 
-    delay(500);
+    delay(1000);
 
     //this->setPowerControl();
 
@@ -506,7 +468,11 @@ void uc1698::initDisplay() {
 
 }
 
-
+/**
+ * [uc1698::xToColumn description]
+ * @param  x [description]
+ * @return   [description]
+ */
 uint8_t uc1698::xToColumn(int x)
 {
     if (_isYMirrored == 0)
@@ -521,6 +487,12 @@ uint8_t uc1698::xToColumn(int x)
     }
 }
 
+
+/**
+ * [uc1698::xToColumnPosition description]
+ * @param  x [description]
+ * @return   [description]
+ */
 uint8_t uc1698::xToColumnPosition(int x)
 {
     if (_isYMirrored == 0)
@@ -546,7 +518,15 @@ uint8_t uc1698::xToColumnPosition(int x)
 
 
 
+// with every write of 16 bit data, in 2 blocks of 8 bit,
+// 3 adjacent pixels are written
 
+/**
+ * [uc1698::drawPixelTriplet description]
+ * @param pixel1State [description]
+ * @param pixel2State [description]
+ * @param pixel3State [description]
+ */
 void uc1698::drawPixelTriplet(bool pixel1State, bool pixel2State, bool pixel3State)
 {
     this->writeData(
@@ -558,8 +538,28 @@ void uc1698::drawPixelTriplet(bool pixel1State, bool pixel2State, bool pixel3Sta
 }
 
 
-void uc1698::drawPixel(int16_t x, int16_t y, uint16_t color)
+
+// Override of AdafruitGFX' drawPixel function
+// 
+// Converts the given x-y-coordinates to the row/col+pos-ccordinates the uc1698 operates in
+// Reads the state/color the three pixels are currently in.
+// Compares that 
+// 
+// 
+// 
+ 
+/**
+ * [uc1698::drawPixel description]
+ * @param x     [description]
+ * @param y     [description]
+ * @param color [description]
+ */
+void uc1698::drawPixel(int16_t x, int16_t y, uint16_t color16)
 {
+    // Converts the 16 bit color to simple monochrome 
+    // (0x00 = false = black, everything else = true = white)
+    bool color = (bool) color16;
+
     // Convert X-Y values to rows, columns and position in column (0,1,2)
     int row = y;
     int col = this->xToColumn(x);
@@ -591,11 +591,10 @@ void uc1698::drawPixel(int16_t x, int16_t y, uint16_t color)
 
 
     // Add new pixel to old (3) pixel state
-
-    if (color == 0) {
-        new3PixelState = current3PixelState & ~newPixel;
-    } else {
+    if (color) {
         new3PixelState = current3PixelState | newPixel;
+    } else {
+        new3PixelState = current3PixelState & ~newPixel;
     }
 
     // Point controller (again) to current address
@@ -606,12 +605,15 @@ void uc1698::drawPixel(int16_t x, int16_t y, uint16_t color)
     this->writeData(new3PixelState);
 }
 
-
+/**
+ * [uc1698::fillScreen description]
+ * @param color the color the screen is to be colored in (false = white, true = black)
+ */
 void uc1698::fillScreen(bool color) {
   uint i,j;
-    for (int i = 0; i <= 159; i++)
+    for (int i = 0; i < 160; i++)
     {    
-        for(j = 37; j <= 90; j++)
+        for(j = 37; j < 91; j++)
         { 
             this->setRowAddress(i);
             this->setColumnAddress(j);
